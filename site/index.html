@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Stargazers Visualizer</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent-glow: rgba(88, 166, 255, 0.15);
+      --star-color: #e3b341;
+      --success: #3fb950;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      line-height: 1.5;
+      padding: 2rem 1rem;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1050px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    /* Load & Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background-color 0.2s;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background-color: var(--accent-glow);
+    }
+
+    .drop-zone input[type="file"] {
+      display: none;
+    }
+
+    .btn {
+      background-color: #21262d;
+      color: #c9d1d9;
+      border: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .btn:hover {
+      background-color: #30363d;
+      border-color: #8b949e;
+      color: #ffffff;
+    }
+
+    .btn-primary {
+      background-color: #238636;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: #2ea043;
+      border-color: transparent;
+    }
+
+    .actions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .error-msg {
+      font-size: 0.875rem;
+      color: #f85149;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+      margin-top: 0.75rem;
+      display: none;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .stat-card {
+      background-color: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .stat-label {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #f0f6fc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stat-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Chart Container */
+    .chart-container {
+      position: relative;
+      width: 100%;
+      height: 420px;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(22, 27, 34, 0.95);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+      font-size: 0.85rem;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      transform: translate(-50%, -120%);
+      white-space: nowrap;
+      display: none;
+      z-index: 10;
+    }
+
+    .tooltip .title {
+      font-weight: 600;
+      color: var(--star-color);
+      margin-bottom: 0.25rem;
+    }
+
+    .tooltip .detail {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .tooltip .user {
+      color: var(--accent);
+      font-family: monospace;
+    }
+
+    /* Stargazers Table */
+    .table-container {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 1rem;
+    }
+
+    .stargazers-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.85rem;
+    }
+
+    .stargazers-table th {
+      position: sticky;
+      top: 0;
+      background-color: #161b22;
+      color: var(--text-muted);
+      padding: 0.65rem 0.85rem;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      z-index: 2;
+    }
+
+    .stargazers-table td {
+      padding: 0.55rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .stargazers-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .stargazers-table tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.03);
+    }
+
+    .stargazers-table .col-num {
+      color: var(--star-color);
+      font-variant-numeric: tabular-nums;
+      font-weight: 500;
+      width: 80px;
+    }
+
+    .stargazers-table .col-time {
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      width: 220px;
+    }
+
+    .stargazers-table .col-user a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .stargazers-table .col-user a:hover {
+      text-decoration: underline;
+    }
+
+    .empty-state {
+      padding: 3rem 1rem;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .note {
+      background-color: rgba(56, 139, 253, 0.08);
+      border: 1px solid rgba(56, 139, 253, 0.25);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .note-header {
+      font-weight: 600;
+      color: #f0f6fc;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+      font-size: 0.95rem;
+    }
+
+    .note p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-bottom: 0.75rem;
+      line-height: 1.45;
+    }
+
+    .code-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      overflow-x: auto;
+    }
+
+    .code-box code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.82rem;
+      color: #79c0ff;
+      white-space: nowrap;
+    }
+
+    .btn-sm {
+      padding: 0.25rem 0.6rem;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor" style="color: var(--star-color);">
+          <path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"></path>
+        </svg>
+        Stargazer History Visualizer
+      </h1>
+      <p>Load a stargazers JSON export to plot cumulative star growth over time.</p>
+    </header>
+
+    <!-- Browser Only / gh Remark -->
+    <div class="note">
+      <div class="note-header">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="color: var(--accent);">
+          <path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-6.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM6.5 7.75A.75.75 0 0 1 7.25 7h1a.75.75 0 0 1 .75.75v3.75h.25a.75.75 0 0 1 0 1.5h-2.5a.75.75 0 0 1 0-1.5h.25V8.5h-.25a.75.75 0 0 1-.75-.75ZM8 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z"></path>
+        </svg>
+        Browser-only tool (no backend)
+      </div>
+      <p>
+        This HTML page runs entirely in your browser memory and does not have a backend server, so it cannot request stars directly from repository APIs.
+        Instead, load a file generated via the <code>gh</code> command-line tool:
+      </p>
+      <div class="code-box">
+        <button type="button" class="btn btn-sm" id="copyGhBtn" onclick="copyGhCommand()">Copy</button>
+        <code id="ghCommandText">gh api -H 'Accept: application/vnd.github.v3.star+json' 'repos/{owner}/{repo}/stargazers?per_page=100' --paginate | jq '[.[] | {"starred_at": .starred_at, "user": .user.login}]' &gt; stargazers.json</code>
+      </div>
+    </div>
+
+    <!-- Load Box -->
+    <div class="card">
+      <div class="drop-zone" id="dropZone">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted);">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <div>
+          <strong>Choose a JSON file</strong> or drag & drop it here
+        </div>
+        <p style="font-size: 0.85rem; color: var(--text-muted);">
+          Expected format: Array of objects with <code>starred_at</code> and <code>user</code> properties.
+        </p>
+        <input type="file" id="fileInput" accept=".json,application/json">
+        <button type="button" class="btn" onclick="document.getElementById('fileInput').click()">Browse Files</button>
+      </div>
+
+      <div id="errorMessage" class="error-msg"></div>
+
+      <div class="actions-bar">
+        <button type="button" id="clearCacheBtn" class="btn" style="display: none;" onclick="clearStoredData()">
+          Clear Saved Data
+        </button>
+        <button type="button" id="loadDefaultBtn" class="btn btn-primary" style="display: none;">
+          Load stargazers.json
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid" style="display: none;">
+      <div class="stat-card">
+        <div class="stat-label">Total Stars</div>
+        <div class="stat-value" id="statTotalStars">0</div>
+        <div class="stat-sub">cumulative count</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">First Star</div>
+        <div class="stat-value" id="statFirstUser">-</div>
+        <div class="stat-sub" id="statFirstDate">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Latest Star</div>
+        <div class="stat-value" id="statLatestUser">-</div>
+        <div class="stat-sub" id="statLatestDate">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Duration</div>
+        <div class="stat-value" id="statDuration">-</div>
+        <div class="stat-sub" id="statAvgRate">-</div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card" id="chartCard" style="display: none;">
+      <h2 style="font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; color: #f0f6fc;">Star History</h2>
+      <div class="chart-container" id="chartContainer">
+        <canvas id="chartCanvas"></canvas>
+        <div class="tooltip" id="tooltip">
+          <div class="title" id="tooltipTitle"></div>
+          <div class="detail" id="tooltipDate"></div>
+          <div class="detail">Starred by <span class="user" id="tooltipUser"></span></div>
+        </div>
+      </div>
+
+      <!-- All stargazers collapsible table -->
+      <div style="margin-top: 1.5rem;">
+        <details>
+          <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.9rem; user-select: none; font-weight: 500;">
+            All stargazers (<span id="stargazersCount">0</span>)
+          </summary>
+          <div class="table-container">
+            <table class="stargazers-table">
+              <thead>
+                <tr>
+                  <th class="col-num">#</th>
+                  <th class="col-time">Time</th>
+                  <th class="col-user">User</th>
+                </tr>
+              </thead>
+              <tbody id="stargazersTableBody"></tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Copy helper for gh command
+    function copyGhCommand() {
+      const el = document.getElementById('ghCommandText');
+      const cmd = el ? el.textContent.trim() : "";
+      navigator.clipboard.writeText(cmd).then(() => {
+        const btn = document.getElementById('copyGhBtn');
+        if (btn) {
+          const original = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = original; }, 2000);
+        }
+      });
+    }
+
+    // Storage Key
+    const STORAGE_KEY = 'stargazers_visualizer_last_loaded';
+
+    // State
+    let stargazersData = [];
+    let chartPoints = [];
+    let chartBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+    let chartMargins = { top: 30, right: 30, bottom: 45, left: 60 };
+
+    // Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const errorMessage = document.getElementById('errorMessage');
+    const loadDefaultBtn = document.getElementById('loadDefaultBtn');
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
+    const statsGrid = document.getElementById('statsGrid');
+    const chartCard = document.getElementById('chartCard');
+    const canvas = document.getElementById('chartCanvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const tooltipTitle = document.getElementById('tooltipTitle');
+    const tooltipDate = document.getElementById('tooltipDate');
+    const tooltipUser = document.getElementById('tooltipUser');
+    const stargazersTableBody = document.getElementById('stargazersTableBody');
+    const stargazersCount = document.getElementById('stargazersCount');
+
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorMessage.style.display = 'block';
+    }
+
+    function clearError() {
+      errorMessage.textContent = '';
+      errorMessage.style.display = 'none';
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // LocalStorage management
+    function saveToLocalStorage(raw, sourceName) {
+      try {
+        const payload = {
+          sourceName: sourceName || 'stargazers.json',
+          savedAt: new Date().toISOString(),
+          data: raw
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        if (clearCacheBtn) clearCacheBtn.style.display = 'inline-flex';
+      } catch (err) {
+        console.warn('Unable to cache stargazers in localStorage:', err);
+      }
+    }
+
+    function loadFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0) {
+          processStargazerData(parsed.data, parsed.sourceName || 'saved file', false);
+          if (clearCacheBtn) clearCacheBtn.style.display = 'inline-flex';
+          return true;
+        }
+      } catch (err) {
+        console.warn('Unable to load from localStorage:', err);
+      }
+      return false;
+    }
+
+    function clearStoredData() {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (err) {}
+      if (clearCacheBtn) clearCacheBtn.style.display = 'none';
+      stargazersData = [];
+      chartPoints = [];
+      statsGrid.style.display = 'none';
+      chartCard.style.display = 'none';
+      clearError();
+    }
+
+    // Drag and Drop listeners
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    function fetchDefaultData() {
+      clearError();
+      fetch('stargazers.json')
+        .then(res => {
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          return res.json();
+        })
+        .then(data => {
+          processStargazerData(data, 'stargazers.json', true);
+        })
+        .catch(err => {
+          // If default file is not found, fail silently on auto-load
+        });
+    }
+
+    // Check localStorage on load, or default fetch if served over HTTP
+    const hasCachedData = loadFromLocalStorage();
+
+    if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+      loadDefaultBtn.style.display = 'inline-flex';
+      loadDefaultBtn.addEventListener('click', () => {
+        fetchDefaultData();
+      });
+      if (!hasCachedData) {
+        fetchDefaultData();
+      }
+    }
+
+    function handleFile(file) {
+      clearError();
+      if (!file.name.endsWith('.json') && file.type !== 'application/json' && file.type !== '') {
+        showError('Please load a valid .json file.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const parsed = JSON.parse(evt.target.result);
+          processStargazerData(parsed, file.name, true);
+        } catch (err) {
+          showError('Failed to parse JSON file: ' + err.message);
+        }
+      };
+      reader.onerror = function() {
+        showError('Error reading file from disk.');
+      };
+      reader.readAsText(file);
+    }
+
+    function getUserLogin(u) {
+      if (!u) return 'unknown';
+      if (typeof u === 'string') return u;
+      if (typeof u === 'object' && u.login) return u.login;
+      return String(u);
+    }
+
+    function processStargazerData(raw, sourceName, saveToStorage = true) {
+      if (!Array.isArray(raw)) {
+        showError('Invalid format: root of JSON must be an array of stargazers.');
+        return;
+      }
+
+      if (raw.length === 0) {
+        showError('The file contains an empty stargazers array.');
+        return;
+      }
+
+      // Validate & clean items
+      const validItems = [];
+      for (let i = 0; i < raw.length; i++) {
+        const item = raw[i];
+        if (!item || !item.starred_at) continue;
+        const ts = new Date(item.starred_at).getTime();
+        if (isNaN(ts)) continue;
+        validItems.push({
+          timestamp: ts,
+          starred_at: item.starred_at,
+          user: getUserLogin(item.user)
+        });
+      }
+
+      if (validItems.length === 0) {
+        showError('No valid items with a "starred_at" timestamp were found.');
+        return;
+      }
+
+      // Clear any previous error
+      clearError();
+
+      // Sort chronologically
+      validItems.sort((a, b) => a.timestamp - b.timestamp);
+      stargazersData = validItems;
+
+      if (saveToStorage) {
+        saveToLocalStorage(raw, sourceName);
+      }
+
+      renderStats();
+      renderStargazersTable();
+      statsGrid.style.display = 'grid';
+      chartCard.style.display = 'block';
+
+      setupCanvas();
+      drawChart();
+    }
+
+    function formatDate(date) {
+      return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    }
+
+    function formatDateTime(date) {
+      return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+
+    function renderStats() {
+      const count = stargazersData.length;
+      const first = stargazersData[0];
+      const latest = stargazersData[count - 1];
+
+      document.getElementById('statTotalStars').textContent = count.toLocaleString();
+
+      document.getElementById('statFirstUser').textContent = '@' + first.user;
+      document.getElementById('statFirstDate').textContent = formatDate(new Date(first.timestamp));
+
+      document.getElementById('statLatestUser').textContent = '@' + latest.user;
+      document.getElementById('statLatestDate').textContent = formatDate(new Date(latest.timestamp));
+
+      const durationMs = latest.timestamp - first.timestamp;
+      const days = Math.max(1, Math.round(durationMs / (1000 * 60 * 60 * 24)));
+      document.getElementById('statDuration').textContent = `${days} days`;
+
+      const avgPerDay = (count / days).toFixed(2);
+      document.getElementById('statAvgRate').textContent = `~${avgPerDay} stars / day`;
+    }
+
+    function renderStargazersTable() {
+      stargazersCount.textContent = stargazersData.length.toLocaleString();
+      const rows = stargazersData.map((item, index) => {
+        const num = index + 1;
+        const timeStr = formatDateTime(new Date(item.timestamp));
+        const userSafe = escapeHtml(item.user);
+        return `<tr>
+          <td class="col-num">#${num}</td>
+          <td class="col-time">${timeStr}</td>
+          <td class="col-user"><a href="https://github.com/${encodeURIComponent(item.user)}" target="_blank" rel="noopener noreferrer">@${userSafe}</a></td>
+        </tr>`;
+      }).join('');
+      stargazersTableBody.innerHTML = rows;
+    }
+
+    // Charting with Vanilla Canvas
+    function setupCanvas() {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.resetTransform();
+      ctx.scale(dpr, dpr);
+    }
+
+    window.addEventListener('resize', () => {
+      if (stargazersData.length > 0) {
+        setupCanvas();
+        drawChart();
+      }
+    });
+
+    function drawChart() {
+      const width = canvas.width / (window.devicePixelRatio || 1);
+      const height = canvas.height / (window.devicePixelRatio || 1);
+      const { top, right, bottom, left } = chartMargins;
+
+      ctx.clearRect(0, 0, width, height);
+
+      if (stargazersData.length === 0) return;
+
+      const plotW = width - left - right;
+      const plotH = height - top - bottom;
+
+      const minX = stargazersData[0].timestamp;
+      const maxX = stargazersData[stargazersData.length - 1].timestamp;
+      // If all stars on exact same timestamp, add a small window
+      const rangeX = maxX === minX ? 86400000 : maxX - minX;
+
+      const minY = 0;
+      const maxY = Math.ceil(stargazersData.length * 1.05);
+
+      chartBounds = { minX, maxX: minX + rangeX, minY, maxY };
+
+      // Compute coordinate mapping
+      function toScreenX(val) {
+        return left + ((val - minX) / rangeX) * plotW;
+      }
+      function toScreenY(val) {
+        return top + plotH - ((val - minY) / (maxY - minY)) * plotH;
+      }
+
+      // Draw Grid & Y Ticks
+      const yTicks = 5;
+      ctx.lineWidth = 1;
+      ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+
+      for (let i = 0; i <= yTicks; i++) {
+        const val = Math.round((maxY / yTicks) * i);
+        const y = toScreenY(val);
+
+        // Grid line
+        ctx.strokeStyle = '#21262d';
+        ctx.beginPath();
+        ctx.moveTo(left, y);
+        ctx.lineTo(left + plotW, y);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = '#8b949e';
+        ctx.fillText(val.toLocaleString(), left - 10, y);
+      }
+
+      // Draw X Ticks (dates)
+      const xTicks = Math.max(2, Math.min(6, Math.floor(plotW / 140)));
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+
+      for (let i = 0; i <= xTicks; i++) {
+        const t = minX + (rangeX / xTicks) * i;
+        const x = toScreenX(t);
+        const d = new Date(t);
+
+        // Grid line
+        ctx.strokeStyle = '#21262d';
+        ctx.beginPath();
+        ctx.moveTo(x, top);
+        ctx.lineTo(x, top + plotH);
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = '#8b949e';
+        const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        ctx.fillText(label, x, top + plotH + 10);
+      }
+
+      // Calculate pixel points for line
+      chartPoints = [];
+      for (let i = 0; i < stargazersData.length; i++) {
+        const count = i + 1;
+        const pt = stargazersData[i];
+        const px = toScreenX(pt.timestamp);
+        const py = toScreenY(count);
+        chartPoints.push({
+          x: px,
+          y: py,
+          starNumber: count,
+          timestamp: pt.timestamp,
+          user: pt.user
+        });
+      }
+
+      // Draw Area Fill (Gradient)
+      const gradient = ctx.createLinearGradient(0, top, 0, top + plotH);
+      gradient.addColorStop(0, 'rgba(88, 166, 255, 0.35)');
+      gradient.addColorStop(1, 'rgba(88, 166, 255, 0.0)');
+
+      ctx.beginPath();
+      ctx.moveTo(chartPoints[0].x, top + plotH);
+      for (let i = 0; i < chartPoints.length; i++) {
+        ctx.lineTo(chartPoints[i].x, chartPoints[i].y);
+      }
+      ctx.lineTo(chartPoints[chartPoints.length - 1].x, top + plotH);
+      ctx.closePath();
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Draw Line
+      ctx.beginPath();
+      ctx.strokeStyle = '#58a6ff';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      for (let i = 0; i < chartPoints.length; i++) {
+        if (i === 0) {
+          ctx.moveTo(chartPoints[i].x, chartPoints[i].y);
+        } else {
+          ctx.lineTo(chartPoints[i].x, chartPoints[i].y);
+        }
+      }
+      ctx.stroke();
+
+      // Outer Axis Border
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(left, top);
+      ctx.lineTo(left, top + plotH);
+      ctx.lineTo(left + plotW, top + plotH);
+      ctx.stroke();
+    }
+
+    // Interactive Hover & Tooltip
+    canvas.addEventListener('mousemove', (e) => {
+      if (chartPoints.length === 0) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const { top, right, bottom, left } = chartMargins;
+      const plotW = rect.width - left - right;
+      const plotH = rect.height - top - bottom;
+
+      if (mouseX < left || mouseX > left + plotW || mouseY < top || mouseY > top + plotH) {
+        tooltip.style.display = 'none';
+        drawChart();
+        return;
+      }
+
+      // Find closest point by X coordinate
+      let closest = chartPoints[0];
+      let minDiff = Math.abs(chartPoints[0].x - mouseX);
+
+      // Binary search for speed
+      let low = 0, high = chartPoints.length - 1;
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const diff = Math.abs(chartPoints[mid].x - mouseX);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = chartPoints[mid];
+        }
+        if (chartPoints[mid].x < mouseX) {
+          low = mid + 1;
+        } else {
+          high = mid - 1;
+        }
+      }
+
+      // Redraw base chart
+      drawChart();
+
+      // Draw Crosshair line
+      ctx.strokeStyle = 'rgba(240, 246, 252, 0.25)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1;
+
+      // Vertical line
+      ctx.beginPath();
+      ctx.moveTo(closest.x, top);
+      ctx.lineTo(closest.x, top + plotH);
+      ctx.stroke();
+
+      // Horizontal line
+      ctx.beginPath();
+      ctx.moveTo(left, closest.y);
+      ctx.lineTo(left + plotW, closest.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw highlighted circle point
+      ctx.beginPath();
+      ctx.arc(closest.x, closest.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#58a6ff';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      // Tooltip positioning
+      tooltipTitle.textContent = `★ Star #${closest.starNumber.toLocaleString()}`;
+      tooltipDate.textContent = formatDateTime(new Date(closest.timestamp));
+      tooltipUser.textContent = '@' + closest.user;
+
+      tooltip.style.display = 'block';
+      tooltip.style.left = `${closest.x}px`;
+      tooltip.style.top = `${closest.y - 12}px`;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      tooltip.style.display = 'none';
+      if (chartPoints.length > 0) {
+        drawChart();
+      }
+    });
+  </script>
+</body>
+</html>
